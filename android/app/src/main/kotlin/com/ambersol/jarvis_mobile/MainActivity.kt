@@ -1,0 +1,5 @@
+package com.ambersol.jarvis_mobile
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
