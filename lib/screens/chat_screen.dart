@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../services/jarvis_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -53,10 +54,16 @@ class _ChatScreenState extends State<ChatScreen> {
           icon: const Icon(Icons.arrow_back_ios_rounded, color: Color(0xFFAFA9EC), size: 18),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Column(
+        title: Column(
           children: [
-            Text('Лея', style: TextStyle(fontSize: 16, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300)),
-            Text('печатает...', style: TextStyle(fontSize: 11, color: Color(0xFF7F77DD))),
+            const Text('Лея', style: TextStyle(fontSize: 16, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300)),
+            Text(
+              _sending ? 'печатает...' : 'здесь',
+              style: TextStyle(
+                fontSize: 11,
+                color: _sending ? const Color(0xFF7F77DD) : const Color(0xFF3a3a5a),
+              ),
+            ),
           ],
         ),
         centerTitle: true,
@@ -201,10 +208,53 @@ class _Dot extends StatelessWidget {
   const _Dot({required this.delay});
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 6, height: 6,
-      decoration: const BoxDecoration(
-        color: Color(0xFF7F77DD), shape: BoxShape.circle,
+    return _AnimatedDot(delay: delay);
+  }
+}
+
+class _AnimatedDot extends StatefulWidget {
+  final int delay;
+  const _AnimatedDot({required this.delay});
+  @override
+  State<_AnimatedDot> createState() => _AnimatedDotState();
+}
+
+class _AnimatedDotState extends State<_AnimatedDot> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _anim = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+    // Запуск с задержкой по delay
+    Future.delayed(Duration(milliseconds: widget.delay), () {
+      if (mounted) _ctrl.repeat(reverse: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _anim,
+      child: Container(
+        width: 6, height: 6,
+        decoration: const BoxDecoration(
+          color: Color(0xFF7F77DD),
+          shape: BoxShape.circle,
+        ),
       ),
     );
   }
