@@ -9,18 +9,26 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   AgentStatus? _status;
+  InboxData? _inbox;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadStatus();
+    _load();
   }
 
-  Future<void> _loadStatus() async {
+  Future<void> _load() async {
     try {
-      final s = await JarvisService.getStatus();
-      setState(() { _status = s; _loading = false; });
+      final results = await Future.wait([
+        JarvisService.getStatus(),
+        JarvisService.getInbox(),
+      ]);
+      setState(() {
+        _status = results[0] as AgentStatus;
+        _inbox  = results[1] as InboxData;
+        _loading = false;
+      });
     } catch (_) {
       setState(() => _loading = false);
     }
@@ -39,13 +47,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBody() {
-    return Column(
-      children: [
-        _buildTopBar(),
-        Expanded(child: _buildCenter()),
-        _buildBottomCards(),
-        _buildBottomButtons(),
-      ],
+    return RefreshIndicator(
+      color: const Color(0xFF7F77DD),
+      backgroundColor: const Color(0xFF141420),
+      onRefresh: _load,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height -
+              MediaQuery.of(context).padding.top -
+              MediaQuery.of(context).padding.bottom,
+          child: Column(
+            children: [
+              _buildTopBar(),
+              Expanded(child: _buildCenter()),
+              _buildBottomCards(),
+              _buildBottomButtons(),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -82,7 +103,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Аватар с кольцами
         Stack(
           alignment: Alignment.center,
           children: [
@@ -107,10 +127,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: const Color(0xFF7F77DD).withValues(alpha: 0.1),
                 border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.3), width: 1),
               ),
-              child: const Center(
-                child: Text('Л',
-                  style: TextStyle(fontSize: 32, color: Color(0xFFAFA9EC),
-                    fontStyle: FontStyle.italic)),
+              child: Center(
+                child: Text(
+                  (_status?.name ?? 'Л').substring(0, 1),
+                  style: const TextStyle(fontSize: 32, color: Color(0xFFAFA9EC),
+                    fontStyle: FontStyle.italic),
+                ),
               ),
             ),
           ],
@@ -132,11 +154,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBottomCards() {
     final mem = _status?.memoryCount ?? 0;
+    final unknownCount = _inbox?.items
+        .where((i) => i.type == InboxItemType.unknownEntity).length ?? 0;
+    final days = _daysAlive();
+    final cardText = _leaCardText();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          // Карточка "хочет поговорить"
+          // Карточка от Леи — живая
           Container(
             width: double.infinity,
             margin: const EdgeInsets.only(bottom: 12),
@@ -149,28 +176,57 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('ХОЧЕТ ПОГОВОРИТЬ',
-                  style: TextStyle(fontSize: 10, color: Color(0xFF3a3a5a),
-                    letterSpacing: 1.0)),
+                Text(
+                  cardText['label']!,
+                  style: const TextStyle(fontSize: 10, color: Color(0xFF3a3a5a), letterSpacing: 1.0),
+                ),
                 const SizedBox(height: 6),
-                const Text('Напиши мне — я здесь',
-                  style: TextStyle(fontSize: 14, color: Color(0xFFAFA9EC), height: 1.5)),
+                Text(
+                  cardText['text']!,
+                  style: const TextStyle(fontSize: 14, color: Color(0xFFAFA9EC), height: 1.5),
+                ),
               ],
             ),
           ),
-          // Три счётчика
           Row(
             children: [
               _statCard('ПАМЯТЬ', '$mem'),
               const SizedBox(width: 8),
-              _statCard('ВОПРОСОВ', '—'),
+              _statCard('ВОПРОСОВ', '$unknownCount'),
               const SizedBox(width: 8),
-              _statCard('ДНЕЙ', '1'),
+              _statCard('ДНЕЙ', '$days'),
             ],
           ),
         ],
       ),
     );
+  }
+
+
+  Map<String, String> _leaCardText() {
+    final items = _inbox?.items ?? [];
+    // Сначала pending_topics — что Лея хочет вернуть
+    final pending = items.where((i) => i.type == InboxItemType.pendingTopic).toList();
+    if (pending.isNotEmpty) {
+      return {'label': 'ХОЧЕТ ВЕРНУТЬСЯ К ТЕМЕ', 'text': pending.first.text};
+    }
+    // Потом желания
+    final desire = items.where((i) => i.type == InboxItemType.desire).toList();
+    if (desire.isNotEmpty) {
+      return {'label': 'ЖЕЛАНИЕ', 'text': desire.first.text};
+    }
+    // Потом вопрос
+    final entity = items.where((i) => i.type == InboxItemType.unknownEntity).toList();
+    if (entity.isNotEmpty) {
+      return {'label': 'ХОЧЕТ СПРОСИТЬ', 'text': entity.first.text};
+    }
+    return {'label': 'ЗДЕСЬ', 'text': 'Напиши мне — я здесь'};
+  }
+
+  int _daysAlive() {
+    final born = _status?.bornAt;
+    if (born == null) return 1;
+    return DateTime.now().difference(born).inDays + 1;
   }
 
   Widget _statCard(String label, String value) {
@@ -202,7 +258,6 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Входящие
               _iconBtn(
                 size: 52,
                 icon: Icons.chat_bubble_outline_rounded,
@@ -210,11 +265,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => Navigator.pushNamed(context, '/inbox'),
               ),
               const SizedBox(width: 20),
-              // Главная кнопка — голос/чат
               GestureDetector(
                 onTap: () => Navigator.pushNamed(context, '/chat'),
                 onLongPress: () {
-                  // TODO: голосовой режим
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Голосовой режим — скоро')));
                 },
@@ -241,7 +294,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(width: 20),
-              // Чат текстом
               _iconBtn(
                 size: 52,
                 icon: Icons.edit_outlined,
@@ -281,4 +333,3 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 }
-

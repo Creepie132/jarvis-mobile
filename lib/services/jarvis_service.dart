@@ -8,14 +8,18 @@ class AgentStatus {
   final String? name;
   final String? emotion;
   final int memoryCount;
+  final DateTime? bornAt;
 
-  AgentStatus({required this.born, this.name, this.emotion, required this.memoryCount});
+  AgentStatus({required this.born, this.name, this.emotion, required this.memoryCount, this.bornAt});
 
   factory AgentStatus.fromJson(Map<String, dynamic> j) => AgentStatus(
         born: j['born'] ?? false,
         name: j['identity']?['name'],
         emotion: j['mood']?['current_emotion'],
         memoryCount: j['memory_count'] ?? 0,
+        bornAt: j['identity']?['born_at'] != null
+            ? DateTime.tryParse(j['identity']['born_at'])
+            : null,
       );
 }
 
