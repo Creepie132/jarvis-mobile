@@ -44,9 +44,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
+  void dispose() {
+    _controller.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF080810),
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: const Color(0xFF080810),
         elevation: 0,
@@ -56,7 +64,8 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         title: Column(
           children: [
-            const Text('Лея', style: TextStyle(fontSize: 16, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300)),
+            const Text('Лея',
+                style: TextStyle(fontSize: 16, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300)),
             Text(
               _sending ? 'печатает...' : 'здесь',
               style: TextStyle(
@@ -68,11 +77,13 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         centerTitle: true,
       ),
-      body: Column(
-        children: [
-          Expanded(child: _buildMessages()),
-          _buildInput(),
-        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(child: _buildMessages()),
+            _buildInput(),
+          ],
+        ),
       ),
     );
   }
@@ -80,7 +91,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildMessages() {
     if (_messages.isEmpty) {
       return const Center(
-        child: Text('Начни разговор', style: TextStyle(color: Color(0xFF2a2a4a), fontSize: 14)),
+        child: Text('Начни разговор',
+            style: TextStyle(color: Color(0xFF2a2a4a), fontSize: 14)),
       );
     }
     return ListView.builder(
@@ -106,16 +118,13 @@ class _ChatScreenState extends State<ChatScreen> {
                 bottomRight: Radius.circular(isUser ? 4 : 18),
               ),
               border: Border.all(
-                color: isUser
-                    ? const Color(0xFF3a3060)
-                    : Colors.white.withValues(alpha: 0.06),
+                color: isUser ? const Color(0xFF3a3060) : Colors.white.withValues(alpha: 0.06),
                 width: 0.5,
               ),
             ),
             child: Text(m.content,
               style: TextStyle(
-                fontSize: 14,
-                height: 1.6,
+                fontSize: 14, height: 1.6,
                 color: isUser ? const Color(0xFFc8c0f0) : const Color(0xFFd8d8f0),
               ),
             ),
@@ -142,11 +151,7 @@ class _ChatScreenState extends State<ChatScreen> {
           width: 36, height: 8,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _Dot(delay: 0),
-              _Dot(delay: 150),
-              _Dot(delay: 300),
-            ],
+            children: [_Dot(delay: 0), _Dot(delay: 150), _Dot(delay: 300)],
           ),
         ),
       ),
@@ -155,7 +160,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildInput() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+      padding: EdgeInsets.fromLTRB(16, 10, 16,
+          MediaQuery.of(context).viewInsets.bottom > 0 ? 10 : 28),
       decoration: BoxDecoration(
         color: const Color(0xFF080810),
         border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 0.5)),
@@ -207,9 +213,7 @@ class _Dot extends StatelessWidget {
   final int delay;
   const _Dot({required this.delay});
   @override
-  Widget build(BuildContext context) {
-    return _AnimatedDot(delay: delay);
-  }
+  Widget build(BuildContext context) => _AnimatedDot(delay: delay);
 }
 
 class _AnimatedDot extends StatefulWidget {
@@ -226,24 +230,17 @@ class _AnimatedDotState extends State<_AnimatedDot> with SingleTickerProviderSta
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
     _anim = Tween<double>(begin: 0.3, end: 1.0).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
-    // Запуск с задержкой по delay
     Future.delayed(Duration(milliseconds: widget.delay), () {
       if (mounted) _ctrl.repeat(reverse: true);
     });
   }
 
   @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  void dispose() { _ctrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -251,12 +248,8 @@ class _AnimatedDotState extends State<_AnimatedDot> with SingleTickerProviderSta
       opacity: _anim,
       child: Container(
         width: 6, height: 6,
-        decoration: const BoxDecoration(
-          color: Color(0xFF7F77DD),
-          shape: BoxShape.circle,
-        ),
+        decoration: const BoxDecoration(color: Color(0xFF7F77DD), shape: BoxShape.circle),
       ),
     );
   }
 }
-
