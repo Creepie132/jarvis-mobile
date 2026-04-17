@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/jarvis_service.dart';
 
@@ -12,10 +13,103 @@ class _HomeScreenState extends State<HomeScreen> {
   InboxData? _inbox;
   bool _loading = true;
 
+  // Сообщения от Леи (свобода воли)
+  final List<OutboxMessage> _leaMessages = [];
+  Timer? _outboxTimer;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _startOutboxPolling();
+  }
+
+  @override
+  void dispose() {
+    _outboxTimer?.cancel();
+    super.dispose();
+  }
+
+  // Опрос outbox каждые 2 минуты
+  void _startOutboxPolling() {
+    _checkOutbox(); // сразу при старте
+    _outboxTimer = Timer.periodic(const Duration(minutes: 2), (_) => _checkOutbox());
+  }
+
+  Future<void> _checkOutbox() async {
+    try {
+      final messages = await JarvisService.getOutbox();
+      if (messages.isNotEmpty && mounted) {
+        setState(() => _leaMessages.addAll(messages));
+        // Показываем первое сообщение как баннер
+        _showLeaBanner(messages.first);
+      }
+    } catch (_) {}
+  }
+
+  void _showLeaBanner(OutboxMessage msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 8),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        content: GestureDetector(
+          onTap: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            JarvisService.markOutboxRead(msg.id);
+            Navigator.pushNamed(context, '/chat');
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF141420),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.4), width: 1),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF7F77DD).withValues(alpha: 0.15),
+                    border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.3)),
+                  ),
+                  child: const Center(
+                    child: Text('Л', style: TextStyle(color: Color(0xFFAFA9EC),
+                        fontSize: 16, fontStyle: FontStyle.italic)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Лея написала', style: TextStyle(
+                          fontSize: 11, color: Color(0xFF7F77DD), letterSpacing: 0.5)),
+                      const SizedBox(height: 4),
+                      Text(
+                        msg.message,
+                        style: const TextStyle(fontSize: 13, color: Color(0xFFd0d0f0), height: 1.4),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_forward_ios_rounded,
+                    size: 12, color: Color(0xFF3a3a5a)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _load() async {
@@ -82,16 +176,31 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Row(
             children: [
+              // Индикатор непрочитанных сообщений от Леи
+              if (_leaMessages.isNotEmpty) ...[
+                Container(
+                  width: 18, height: 18,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF7F77DD).withValues(alpha: 0.9),
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${_leaMessages.length}',
+                      style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               Container(
                 width: 6, height: 6,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF1D9E75),
-                  shape: BoxShape.circle,
+                  color: Color(0xFF1D9E75), shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 6),
-              const Text('онлайн',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF3a3a5a))),
+              const Text('онлайн', style: TextStyle(fontSize: 12, color: Color(0xFF3a3a5a))),
             ],
           ),
         ],
@@ -106,20 +215,12 @@ class _HomeScreenState extends State<HomeScreen> {
         Stack(
           alignment: Alignment.center,
           children: [
-            Container(
-              width: 120, height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.08), width: 1),
-              ),
-            ),
-            Container(
-              width: 100, height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.15), width: 1),
-              ),
-            ),
+            Container(width: 120, height: 120,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.08), width: 1))),
+            Container(width: 100, height: 100,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.15), width: 1))),
             Container(
               width: 80, height: 80,
               decoration: BoxDecoration(
@@ -130,24 +231,18 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Center(
                 child: Text(
                   (_status?.name ?? 'Л').substring(0, 1),
-                  style: const TextStyle(fontSize: 32, color: Color(0xFFAFA9EC),
-                    fontStyle: FontStyle.italic),
+                  style: const TextStyle(fontSize: 32, color: Color(0xFFAFA9EC), fontStyle: FontStyle.italic),
                 ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        Text(
-          _status?.name ?? 'Лея',
-          style: const TextStyle(fontSize: 22, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300),
-        ),
+        Text(_status?.name ?? 'Лея',
+          style: const TextStyle(fontSize: 22, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300)),
         const SizedBox(height: 6),
-        Text(
-          _status?.emotion ?? 'здесь',
-          style: const TextStyle(fontSize: 13, color: Color(0xFF7F77DD)),
-          textAlign: TextAlign.center,
-        ),
+        Text(_status?.emotion ?? 'здесь',
+          style: const TextStyle(fontSize: 13, color: Color(0xFF7F77DD)), textAlign: TextAlign.center),
       ],
     );
   }
@@ -163,31 +258,74 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          // Карточка от Леи — живая
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  cardText['label']!,
-                  style: const TextStyle(fontSize: 10, color: Color(0xFF3a3a5a), letterSpacing: 1.0),
+          // Если есть непрочитанные от Леи — показываем последнее
+          if (_leaMessages.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                final msg = _leaMessages.last;
+                JarvisService.markOutboxRead(msg.id);
+                setState(() => _leaMessages.clear());
+                Navigator.pushNamed(context, '/chat');
+              },
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0e0e1e),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.5), width: 1),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  cardText['text']!,
-                  style: const TextStyle(fontSize: 14, color: Color(0xFFAFA9EC), height: 1.5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('НАПИСАЛА САМА',
+                          style: TextStyle(fontSize: 10, color: Color(0xFF7F77DD), letterSpacing: 1.0)),
+                        const Spacer(),
+                        Container(
+                          width: 8, height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF7F77DD), shape: BoxShape.circle),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _leaMessages.last.message,
+                      style: const TextStyle(fontSize: 14, color: Color(0xFFe0e0f0), height: 1.5),
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    const Text('нажми чтобы ответить →',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF3a3a5a))),
+                  ],
                 ),
-              ],
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(cardText['label']!,
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF3a3a5a), letterSpacing: 1.0)),
+                  const SizedBox(height: 6),
+                  Text(cardText['text']!,
+                    style: const TextStyle(fontSize: 14, color: Color(0xFFAFA9EC), height: 1.5)),
+                ],
+              ),
             ),
-          ),
           Row(
             children: [
               _statCard('ПАМЯТЬ', '$mem'),
@@ -202,24 +340,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-
   Map<String, String> _leaCardText() {
     final items = _inbox?.items ?? [];
-    // Сначала pending_topics — что Лея хочет вернуть
     final pending = items.where((i) => i.type == InboxItemType.pendingTopic).toList();
-    if (pending.isNotEmpty) {
-      return {'label': 'ХОЧЕТ ВЕРНУТЬСЯ К ТЕМЕ', 'text': pending.first.text};
-    }
-    // Потом желания
+    if (pending.isNotEmpty) return {'label': 'ХОЧЕТ ВЕРНУТЬСЯ К ТЕМЕ', 'text': pending.first.text};
     final desire = items.where((i) => i.type == InboxItemType.desire).toList();
-    if (desire.isNotEmpty) {
-      return {'label': 'ЖЕЛАНИЕ', 'text': desire.first.text};
-    }
-    // Потом вопрос
+    if (desire.isNotEmpty) return {'label': 'ЖЕЛАНИЕ', 'text': desire.first.text};
     final entity = items.where((i) => i.type == InboxItemType.unknownEntity).toList();
-    if (entity.isNotEmpty) {
-      return {'label': 'ХОЧЕТ СПРОСИТЬ', 'text': entity.first.text};
-    }
+    if (entity.isNotEmpty) return {'label': 'ХОЧЕТ СПРОСИТЬ', 'text': entity.first.text};
     return {'label': 'ЗДЕСЬ', 'text': 'Напиши мне — я здесь'};
   }
 
@@ -258,12 +386,8 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _iconBtn(
-                size: 52,
-                icon: Icons.chat_bubble_outline_rounded,
-                iconSize: 20,
-                onTap: () => Navigator.pushNamed(context, '/inbox'),
-              ),
+              _iconBtn(size: 52, icon: Icons.chat_bubble_outline_rounded, iconSize: 20,
+                  onTap: () => Navigator.pushNamed(context, '/inbox')),
               const SizedBox(width: 20),
               GestureDetector(
                 onTap: () => Navigator.pushNamed(context, '/chat'),
@@ -294,19 +418,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(width: 20),
-              _iconBtn(
-                size: 52,
-                icon: Icons.edit_outlined,
-                iconSize: 20,
-                onTap: () => Navigator.pushNamed(context, '/chat'),
-              ),
+              _iconBtn(size: 52, icon: Icons.edit_outlined, iconSize: 20,
+                  onTap: () => Navigator.pushNamed(context, '/chat')),
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            'удержи для разговора · нажми для текста',
-            style: TextStyle(fontSize: 11, color: Color(0xFF2a2a4a)),
-          ),
+          const Text('удержи для разговора · нажми для текста',
+              style: TextStyle(fontSize: 11, color: Color(0xFF2a2a4a))),
         ],
       ),
     );

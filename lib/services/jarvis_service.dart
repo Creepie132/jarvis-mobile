@@ -34,6 +34,28 @@ class ChatMessage {
   Map<String, dynamic> toJson() => {'role': role, 'content': content};
 }
 
+// Сообщение от Леи (свобода воли — она написала сама)
+class OutboxMessage {
+  final String id;
+  final String message;
+  final String reason;
+  final DateTime createdAt;
+
+  OutboxMessage({
+    required this.id,
+    required this.message,
+    required this.reason,
+    required this.createdAt,
+  });
+
+  factory OutboxMessage.fromJson(Map<String, dynamic> j) => OutboxMessage(
+        id: j['id'] as String,
+        message: j['message'] as String,
+        reason: j['reason'] as String? ?? '',
+        createdAt: DateTime.tryParse(j['created_at'] ?? '') ?? DateTime.now(),
+      );
+}
+
 // Три типа входящих от Леи
 class InboxItem {
   final String id;
@@ -92,7 +114,6 @@ class InboxData {
       ));
     }
 
-    // Сортируем по приоритету
     items.sort((a, b) => b.priority.compareTo(a.priority));
     return InboxData(items);
   }
@@ -131,9 +152,9 @@ class JarvisService {
 
   static Future<void> resolveInboxItem(InboxItemType type, String id) async {
     final typeStr = switch (type) {
-      InboxItemType.pendingTopic   => 'pending_topic',
-      InboxItemType.unknownEntity  => 'unknown_entity',
-      InboxItemType.desire         => 'desire',
+      InboxItemType.pendingTopic  => 'pending_topic',
+      InboxItemType.unknownEntity => 'unknown_entity',
+      InboxItemType.desire        => 'desire',
     };
     await http
         .post(
@@ -143,5 +164,25 @@ class JarvisService {
         )
         .timeout(const Duration(seconds: 10));
   }
-}
 
+  // Забрать сообщения от Леи (свобода воли)
+  static Future<List<OutboxMessage>> getOutbox() async {
+    final res = await http
+        .get(Uri.parse('$_baseUrl/api/outbox'))
+        .timeout(const Duration(seconds: 10));
+    final data = jsonDecode(res.body);
+    final list = data['messages'] as List? ?? [];
+    return list.map((m) => OutboxMessage.fromJson(m as Map<String, dynamic>)).toList();
+  }
+
+  // Отметить что Влад прочитал сообщение
+  static Future<void> markOutboxRead(String id) async {
+    await http
+        .post(
+          Uri.parse('$_baseUrl/api/outbox/read'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'id': id}),
+        )
+        .timeout(const Duration(seconds: 10));
+  }
+}
