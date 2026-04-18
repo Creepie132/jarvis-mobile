@@ -83,7 +83,7 @@ class _LeaBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Лея написала',
+                  const Text('Написала сама',
                       style: TextStyle(fontSize: 11, color: Color(0xFF7F77DD), letterSpacing: 0.5)),
                   const SizedBox(height: 4),
                   Text(message,

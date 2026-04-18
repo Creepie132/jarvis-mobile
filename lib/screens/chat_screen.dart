@@ -14,6 +14,69 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scroll = ScrollController();
   bool _sending = false;
 
+  bool _isOnboarding = false;
+  bool _greetRequested = false;
+  bool _onboardingCompleted = false;
+  String _agentName = '...'; // имя агента — подтягивается из API
+  static const int _onboardingThreshold = 10; // реплик Леи
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAgentName();
+  }
+
+  Future<void> _loadAgentName() async {
+    try {
+      final st = await JarvisService.getStatus();
+      if (!mounted) return;
+      if (st.name != null && st.name!.isNotEmpty) {
+        setState(() => _agentName = st.name!);
+      }
+    } catch (_) { /* тихо, имя останется '...' */ }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['onboarding'] == true && !_greetRequested) {
+      _greetRequested = true;
+      _isOnboarding = true;
+      _fetchFirstGreeting();
+    }
+  }
+
+  Future<void> _fetchFirstGreeting() async {
+    setState(() => _sending = true);
+    try {
+      final greeting = await JarvisService.onboardingGreet();
+      setState(() => _messages.add(ChatMessage(role: 'assistant', content: greeting)));
+      _scrollDown();
+    } catch (e) {
+      // already_done или not_born — просто игнорируем и отпускаем управление
+      if (e.toString().contains('already_done')) {
+        setState(() { _isOnboarding = false; _onboardingCompleted = true; });
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _maybeCompleteOnboarding() async {
+    if (!_isOnboarding || _onboardingCompleted) return;
+    final agentReplies = _messages.where((m) => m.role == 'assistant').length;
+    if (agentReplies >= _onboardingThreshold) {
+      _onboardingCompleted = true; // ставим сразу чтобы не вызвать дважды
+      try {
+        await JarvisService.onboardingComplete();
+      } catch (_) {
+        // если не получилось — попробуем в следующий раз
+        _onboardingCompleted = false;
+      }
+    }
+  }
+
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
@@ -26,6 +89,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final reply = await JarvisService.sendMessage(text, _messages.sublist(0, _messages.length - 1));
       setState(() => _messages.add(ChatMessage(role: 'assistant', content: reply)));
+      _maybeCompleteOnboarding();
     } catch (e) {
       setState(() => _messages.add(ChatMessage(role: 'assistant', content: 'Что-то пошло не так...')));
     } finally {
@@ -60,17 +124,30 @@ class _ChatScreenState extends State<ChatScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, color: Color(0xFFAFA9EC), size: 18),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            // Если пришли сюда через Bootstrap (онбординг или глубокий переход) — возвращаемся в Home
+            if (Navigator.of(context).canPop()) {
+              Navigator.pop(context);
+            } else {
+              Navigator.of(context).pushReplacementNamed('/home');
+            }
+          },
         ),
         title: Column(
           children: [
-            const Text('Лея',
-                style: TextStyle(fontSize: 16, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300)),
+            Text(_agentName,
+                style: const TextStyle(fontSize: 16, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300)),
             Text(
-              _sending ? 'печатает...' : 'здесь',
+              _sending
+                  ? 'печатает...'
+                  : (_isOnboarding && !_onboardingCompleted ? 'знакомится' : 'здесь'),
               style: TextStyle(
                 fontSize: 11,
-                color: _sending ? const Color(0xFF7F77DD) : const Color(0xFF3a3a5a),
+                color: _sending
+                    ? const Color(0xFF7F77DD)
+                    : (_isOnboarding && !_onboardingCompleted
+                        ? const Color(0xFFB08CFF)
+                        : const Color(0xFF3a3a5a)),
               ),
             ),
           ],

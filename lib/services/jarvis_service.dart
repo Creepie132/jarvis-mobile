@@ -9,8 +9,16 @@ class AgentStatus {
   final String? emotion;
   final int memoryCount;
   final DateTime? bornAt;
+  final bool onboardingDone;
 
-  AgentStatus({required this.born, this.name, this.emotion, required this.memoryCount, this.bornAt});
+  AgentStatus({
+    required this.born,
+    this.name,
+    this.emotion,
+    required this.memoryCount,
+    this.bornAt,
+    this.onboardingDone = true,
+  });
 
   factory AgentStatus.fromJson(Map<String, dynamic> j) => AgentStatus(
         born: j['born'] ?? false,
@@ -20,6 +28,7 @@ class AgentStatus {
         bornAt: j['identity']?['born_at'] != null
             ? DateTime.tryParse(j['identity']['born_at'])
             : null,
+        onboardingDone: j['identity']?['onboarding_done'] ?? true,
       );
 }
 
@@ -143,5 +152,49 @@ class JarvisService {
             body: jsonEncode({'token': token}))
           .timeout(const Duration(seconds: 10));
     } catch (_) {}
+  }
+
+  // ===== Рождение =====
+
+  static Future<List<String>> getBirthQuestions() async {
+    final res = await http.get(Uri.parse('$_baseUrl/api/birth'))
+        .timeout(const Duration(seconds: 10));
+    final data = jsonDecode(res.body);
+    return List<String>.from(data['questions'] ?? []);
+  }
+
+  /// Рождение агента. answers — массив строк (пустые — "промолчал"),
+  /// preferences — Map ключ→значение (пустой = полная свобода воли).
+  static Future<Map<String, dynamic>> birth({
+    required List<String> answers,
+    Map<String, dynamic> preferences = const {},
+  }) async {
+    final res = await http.post(
+      Uri.parse('$_baseUrl/api/birth'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'answers': answers, 'preferences': preferences}),
+    ).timeout(const Duration(seconds: 60));
+    final data = jsonDecode(res.body);
+    if (data['error'] != null) throw Exception(data['error']);
+    return data as Map<String, dynamic>;
+  }
+
+  // ===== Онбординг =====
+
+  /// Первое сообщение от агента после рождения
+  static Future<String> onboardingGreet() async {
+    final res = await http.post(Uri.parse('$_baseUrl/api/onboarding/greet'),
+          headers: {'Content-Type': 'application/json'})
+        .timeout(const Duration(seconds: 30));
+    final data = jsonDecode(res.body);
+    if (data['error'] != null) throw Exception(data['error']);
+    return data['reply'] as String;
+  }
+
+  /// Знакомство завершено — переход в обычный режим
+  static Future<void> onboardingComplete() async {
+    await http.post(Uri.parse('$_baseUrl/api/onboarding/complete'),
+          headers: {'Content-Type': 'application/json'})
+        .timeout(const Duration(seconds: 10));
   }
 }

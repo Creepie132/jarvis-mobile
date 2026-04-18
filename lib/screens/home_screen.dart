@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('Лея написала', style: TextStyle(fontSize: 11, color: Color(0xFF7F77DD), letterSpacing: 0.5)),
+                      const Text('Написала сама', style: TextStyle(fontSize: 11, color: Color(0xFF7F77DD), letterSpacing: 0.5)),
                       const SizedBox(height: 4),
                       Text(msg.message,
                         style: const TextStyle(fontSize: 13, color: Color(0xFFd0d0f0), height: 1.4),
