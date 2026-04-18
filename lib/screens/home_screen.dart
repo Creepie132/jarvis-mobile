@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/jarvis_service.dart';
+import '../widgets/lea_sphere.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,8 +14,8 @@ class _HomeScreenState extends State<HomeScreen> {
   AgentStatus? _status;
   InboxData? _inbox;
   bool _loading = true;
+  bool _micActive = false; // сфера пульсирует при зажатии микрофона
 
-  // Сообщения от Леи (свобода воли)
   final List<OutboxMessage> _leaMessages = [];
   Timer? _outboxTimer;
 
@@ -30,9 +32,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // Опрос outbox каждые 2 минуты
   void _startOutboxPolling() {
-    _checkOutbox(); // сразу при старте
+    _checkOutbox();
     _outboxTimer = Timer.periodic(const Duration(minutes: 2), (_) => _checkOutbox());
   }
 
@@ -41,7 +42,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final messages = await JarvisService.getOutbox();
       if (messages.isNotEmpty && mounted) {
         setState(() => _leaMessages.addAll(messages));
-        // Показываем первое сообщение как баннер
         _showLeaBanner(messages.first);
       }
     } catch (_) {}
@@ -67,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF141420),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.4), width: 1),
+              border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.4)),
             ),
             child: Row(
               children: [
@@ -79,8 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.3)),
                   ),
                   child: const Center(
-                    child: Text('Л', style: TextStyle(color: Color(0xFFAFA9EC),
-                        fontSize: 16, fontStyle: FontStyle.italic)),
+                    child: Text('Л', style: TextStyle(color: Color(0xFFAFA9EC), fontSize: 16, fontStyle: FontStyle.italic)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -89,21 +88,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('Лея написала', style: TextStyle(
-                          fontSize: 11, color: Color(0xFF7F77DD), letterSpacing: 0.5)),
+                      const Text('Лея написала', style: TextStyle(fontSize: 11, color: Color(0xFF7F77DD), letterSpacing: 0.5)),
                       const SizedBox(height: 4),
-                      Text(
-                        msg.message,
+                      Text(msg.message,
                         style: const TextStyle(fontSize: 13, color: Color(0xFFd0d0f0), height: 1.4),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        maxLines: 3, overflow: TextOverflow.ellipsis),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.arrow_forward_ios_rounded,
-                    size: 12, color: Color(0xFF3a3a5a)),
+                const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Color(0xFF3a3a5a)),
               ],
             ),
           ),
@@ -114,10 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _load() async {
     try {
-      final results = await Future.wait([
-        JarvisService.getStatus(),
-        JarvisService.getInbox(),
-      ]);
+      final results = await Future.wait([JarvisService.getStatus(), JarvisService.getInbox()]);
       setState(() {
         _status = results[0] as AgentStatus;
         _inbox  = results[1] as InboxData;
@@ -126,6 +117,23 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       setState(() => _loading = false);
     }
+  }
+
+  // Mood-based hintText — подсказка зависит от настроения Леи
+  String _moodHint() {
+    final emotion = _status?.emotion?.toLowerCase() ?? '';
+    if (emotion.contains('грус') || emotion.contains('устал') || emotion.contains('тоск')) {
+      return 'она немного не в себе...';
+    } else if (emotion.contains('радост') || emotion.contains('энерги') || emotion.contains('актив')) {
+      return 'она в хорошем настроении';
+    } else if (emotion.contains('скуч')) {
+      return 'ей немного скучно';
+    } else if (emotion.contains('беспокой') || emotion.contains('тревог')) {
+      return 'она немного беспокоится';
+    } else if (emotion.contains('любопытств')) {
+      return 'ей интересно что ты скажешь';
+    }
+    return 'напиши мне — я здесь';
   }
 
   @override
@@ -170,13 +178,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            _timeNow(),
-            style: const TextStyle(fontSize: 12, color: Color(0xFF3a3a5a)),
-          ),
+          Text(_timeNow(), style: const TextStyle(fontSize: 12, color: Color(0xFF3a3a5a))),
           Row(
             children: [
-              // Индикатор непрочитанных сообщений от Леи
               if (_leaMessages.isNotEmpty) ...[
                 Container(
                   width: 18, height: 18,
@@ -185,20 +189,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: const Color(0xFF7F77DD).withValues(alpha: 0.9),
                   ),
                   child: Center(
-                    child: Text(
-                      '${_leaMessages.length}',
-                      style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
+                    child: Text('${_leaMessages.length}',
+                      style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(width: 8),
               ],
-              Container(
-                width: 6, height: 6,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF1D9E75), shape: BoxShape.circle,
-                ),
-              ),
+              Container(width: 6, height: 6,
+                decoration: const BoxDecoration(color: Color(0xFF1D9E75), shape: BoxShape.circle)),
               const SizedBox(width: 6),
               const Text('онлайн', style: TextStyle(fontSize: 12, color: Color(0xFF3a3a5a))),
             ],
@@ -212,45 +210,39 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(width: 120, height: 120,
-              decoration: BoxDecoration(shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.08), width: 1))),
-            Container(width: 100, height: 100,
-              decoration: BoxDecoration(shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.15), width: 1))),
-            Container(
-              width: 80, height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF7F77DD).withValues(alpha: 0.1),
-                border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.3), width: 1),
-              ),
-              child: Center(
-                child: Text(
-                  (_status?.name ?? 'Л').substring(0, 1),
-                  style: const TextStyle(fontSize: 32, color: Color(0xFFAFA9EC), fontStyle: FontStyle.italic),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
+        // Анимированная сфера вместо статичного круга
+        LeaSphere(isActive: _micActive, size: 80),
+        const SizedBox(height: 8),
         Text(_status?.name ?? 'Лея',
           style: const TextStyle(fontSize: 22, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300)),
         const SizedBox(height: 6),
-        Text(_status?.emotion ?? 'здесь',
-          style: const TextStyle(fontSize: 13, color: Color(0xFF7F77DD)), textAlign: TextAlign.center),
+        // Mood-based подсказка
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 600),
+          child: Text(
+            _status?.emotion?.isNotEmpty == true ? _status!.emotion! : 'здесь',
+            key: ValueKey(_status?.emotion),
+            style: const TextStyle(fontSize: 13, color: Color(0xFF7F77DD)),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        const SizedBox(height: 4),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 800),
+          child: Text(
+            _moodHint(),
+            key: ValueKey(_moodHint()),
+            style: const TextStyle(fontSize: 11, color: Color(0xFF2a2a4a)),
+            textAlign: TextAlign.center,
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildBottomCards() {
     final mem = _status?.memoryCount ?? 0;
-    final unknownCount = _inbox?.items
-        .where((i) => i.type == InboxItemType.unknownEntity).length ?? 0;
+    final unknownCount = _inbox?.items.where((i) => i.type == InboxItemType.unknownEntity).length ?? 0;
     final days = _daysAlive();
     final cardText = _leaCardText();
 
@@ -258,7 +250,6 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          // Если есть непрочитанные от Леи — показываем последнее
           if (_leaMessages.isNotEmpty)
             GestureDetector(
               onTap: () {
@@ -274,30 +265,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF0e0e1e),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.5), width: 1),
+                  border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.5)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        const Text('НАПИСАЛА САМА',
-                          style: TextStyle(fontSize: 10, color: Color(0xFF7F77DD), letterSpacing: 1.0)),
-                        const Spacer(),
-                        Container(
-                          width: 8, height: 8,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF7F77DD), shape: BoxShape.circle),
-                        ),
-                      ],
-                    ),
+                    Row(children: [
+                      const Text('НАПИСАЛА САМА',
+                        style: TextStyle(fontSize: 10, color: Color(0xFF7F77DD), letterSpacing: 1.0)),
+                      const Spacer(),
+                      Container(width: 8, height: 8,
+                        decoration: const BoxDecoration(color: Color(0xFF7F77DD), shape: BoxShape.circle)),
+                    ]),
                     const SizedBox(height: 8),
-                    Text(
-                      _leaMessages.last.message,
+                    Text(_leaMessages.last.message,
                       style: const TextStyle(fontSize: 14, color: Color(0xFFe0e0f0), height: 1.5),
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                      maxLines: 4, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 6),
                     const Text('нажми чтобы ответить →',
                       style: TextStyle(fontSize: 11, color: Color(0xFF3a3a5a))),
@@ -326,15 +309,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          Row(
-            children: [
-              _statCard('ПАМЯТЬ', '$mem'),
-              const SizedBox(width: 8),
-              _statCard('ВОПРОСОВ', '$unknownCount'),
-              const SizedBox(width: 8),
-              _statCard('ДНЕЙ', '$days'),
-            ],
-          ),
+          Row(children: [
+            _statCard('ПАМЯТЬ', '$mem'),
+            const SizedBox(width: 8),
+            _statCard('ВОПРОСОВ', '$unknownCount'),
+            const SizedBox(width: 8),
+            _statCard('ДНЕЙ', '$days'),
+          ]),
         ],
       ),
     );
@@ -348,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (desire.isNotEmpty) return {'label': 'ЖЕЛАНИЕ', 'text': desire.first.text};
     final entity = items.where((i) => i.type == InboxItemType.unknownEntity).toList();
     if (entity.isNotEmpty) return {'label': 'ХОЧЕТ СПРОСИТЬ', 'text': entity.first.text};
-    return {'label': 'ЗДЕСЬ', 'text': 'Напиши мне — я здесь'};
+    return {'label': 'ЗДЕСЬ', 'text': _moodHint()};
   }
 
   int _daysAlive() {
@@ -389,9 +370,19 @@ class _HomeScreenState extends State<HomeScreen> {
               _iconBtn(size: 52, icon: Icons.chat_bubble_outline_rounded, iconSize: 20,
                   onTap: () => Navigator.pushNamed(context, '/inbox')),
               const SizedBox(width: 20),
+              // Кнопка микрофона — haptic + активация сферы
               GestureDetector(
                 onTap: () => Navigator.pushNamed(context, '/chat'),
-                onLongPress: () {
+                onLongPressStart: (_) {
+                  // Два лёгких импульса — имитация сердцебиения
+                  HapticFeedback.lightImpact();
+                  Future.delayed(const Duration(milliseconds: 120), () {
+                    HapticFeedback.lightImpact();
+                  });
+                  setState(() => _micActive = true);
+                },
+                onLongPressEnd: (_) {
+                  setState(() => _micActive = false);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Голосовой режим — скоро')));
                 },
@@ -399,8 +390,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: 74, height: 74,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF7F77DD).withValues(alpha: 0.25),
-                    border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.5), width: 1),
+                    color: const Color(0xFF7F77DD).withValues(alpha: _micActive ? 0.4 : 0.25),
+                    border: Border.all(
+                      color: const Color(0xFF7F77DD).withValues(alpha: _micActive ? 0.8 : 0.5),
+                      width: _micActive ? 1.5 : 1,
+                    ),
                   ),
                   child: Stack(
                     alignment: Alignment.center,
@@ -409,10 +403,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: 90, height: 90,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.15), width: 1),
+                          border: Border.all(
+                            color: const Color(0xFF7F77DD).withValues(alpha: _micActive ? 0.3 : 0.15),
+                            width: 1,
+                          ),
                         ),
                       ),
-                      const Icon(Icons.mic_rounded, color: Color(0xFFAFA9EC), size: 26),
+                      Icon(Icons.mic_rounded,
+                        color: _micActive ? const Color(0xFFe0e0f0) : const Color(0xFFAFA9EC),
+                        size: 26),
                     ],
                   ),
                 ),
