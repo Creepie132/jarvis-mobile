@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/jarvis_service.dart';
+import '../services/push_service.dart';
 import '../widgets/lea_sphere.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -14,7 +15,7 @@ class _HomeScreenState extends State<HomeScreen> {
   AgentStatus? _status;
   InboxData? _inbox;
   bool _loading = true;
-  bool _micActive = false; // сфера пульсирует при зажатии микрофона
+  bool _micActive = false;
 
   final List<OutboxMessage> _leaMessages = [];
   Timer? _outboxTimer;
@@ -24,6 +25,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _load();
     _startOutboxPolling();
+    // Инициализируем FCM после первого кадра — context уже готов
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PushService.init(context);
+    });
   }
 
   @override
@@ -119,20 +124,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Mood-based hintText — подсказка зависит от настроения Леи
   String _moodHint() {
     final emotion = _status?.emotion?.toLowerCase() ?? '';
-    if (emotion.contains('грус') || emotion.contains('устал') || emotion.contains('тоск')) {
-      return 'она немного не в себе...';
-    } else if (emotion.contains('радост') || emotion.contains('энерги') || emotion.contains('актив')) {
-      return 'она в хорошем настроении';
-    } else if (emotion.contains('скуч')) {
-      return 'ей немного скучно';
-    } else if (emotion.contains('беспокой') || emotion.contains('тревог')) {
-      return 'она немного беспокоится';
-    } else if (emotion.contains('любопытств')) {
-      return 'ей интересно что ты скажешь';
-    }
+    if (emotion.contains('грус') || emotion.contains('устал') || emotion.contains('тоск')) return 'она немного не в себе...';
+    if (emotion.contains('радост') || emotion.contains('энерги') || emotion.contains('актив')) return 'она в хорошем настроении';
+    if (emotion.contains('скуч')) return 'ей немного скучно';
+    if (emotion.contains('беспокой') || emotion.contains('тревог')) return 'она немного беспокоится';
+    if (emotion.contains('любопытств')) return 'ей интересно что ты скажешь';
     return 'напиши мне — я здесь';
   }
 
@@ -184,14 +182,10 @@ class _HomeScreenState extends State<HomeScreen> {
               if (_leaMessages.isNotEmpty) ...[
                 Container(
                   width: 18, height: 18,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF7F77DD).withValues(alpha: 0.9),
-                  ),
-                  child: Center(
-                    child: Text('${_leaMessages.length}',
-                      style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
+                  decoration: BoxDecoration(shape: BoxShape.circle,
+                    color: const Color(0xFF7F77DD).withValues(alpha: 0.9)),
+                  child: Center(child: Text('${_leaMessages.length}',
+                    style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold))),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -210,13 +204,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Анимированная сфера вместо статичного круга
         LeaSphere(isActive: _micActive, size: 80),
         const SizedBox(height: 8),
         Text(_status?.name ?? 'Лея',
           style: const TextStyle(fontSize: 22, color: Color(0xFFe0e0f0), fontWeight: FontWeight.w300)),
         const SizedBox(height: 6),
-        // Mood-based подсказка
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 600),
           child: Text(
@@ -229,12 +221,9 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 4),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 800),
-          child: Text(
-            _moodHint(),
-            key: ValueKey(_moodHint()),
+          child: Text(_moodHint(), key: ValueKey(_moodHint()),
             style: const TextStyle(fontSize: 11, color: Color(0xFF2a2a4a)),
-            textAlign: TextAlign.center,
-          ),
+            textAlign: TextAlign.center),
         ),
       ],
     );
@@ -245,7 +234,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final unknownCount = _inbox?.items.where((i) => i.type == InboxItemType.unknownEntity).length ?? 0;
     final days = _daysAlive();
     final cardText = _leaCardText();
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -267,25 +255,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: 0.5)),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      const Text('НАПИСАЛА САМА',
-                        style: TextStyle(fontSize: 10, color: Color(0xFF7F77DD), letterSpacing: 1.0)),
-                      const Spacer(),
-                      Container(width: 8, height: 8,
-                        decoration: const BoxDecoration(color: Color(0xFF7F77DD), shape: BoxShape.circle)),
-                    ]),
-                    const SizedBox(height: 8),
-                    Text(_leaMessages.last.message,
-                      style: const TextStyle(fontSize: 14, color: Color(0xFFe0e0f0), height: 1.5),
-                      maxLines: 4, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 6),
-                    const Text('нажми чтобы ответить →',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF3a3a5a))),
-                  ],
-                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Text('НАПИСАЛА САМА', style: TextStyle(fontSize: 10, color: Color(0xFF7F77DD), letterSpacing: 1.0)),
+                    const Spacer(),
+                    Container(width: 8, height: 8,
+                      decoration: const BoxDecoration(color: Color(0xFF7F77DD), shape: BoxShape.circle)),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(_leaMessages.last.message,
+                    style: const TextStyle(fontSize: 14, color: Color(0xFFe0e0f0), height: 1.5),
+                    maxLines: 4, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 6),
+                  const Text('нажми чтобы ответить →', style: TextStyle(fontSize: 11, color: Color(0xFF3a3a5a))),
+                ]),
               ),
             )
           else
@@ -298,16 +281,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(cardText['label']!,
-                    style: const TextStyle(fontSize: 10, color: Color(0xFF3a3a5a), letterSpacing: 1.0)),
-                  const SizedBox(height: 6),
-                  Text(cardText['text']!,
-                    style: const TextStyle(fontSize: 14, color: Color(0xFFAFA9EC), height: 1.5)),
-                ],
-              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(cardText['label']!, style: const TextStyle(fontSize: 10, color: Color(0xFF3a3a5a), letterSpacing: 1.0)),
+                const SizedBox(height: 6),
+                Text(cardText['text']!, style: const TextStyle(fontSize: 14, color: Color(0xFFAFA9EC), height: 1.5)),
+              ]),
             ),
           Row(children: [
             _statCard('ПАМЯТЬ', '$mem'),
@@ -347,14 +325,11 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 9, color: Color(0xFF3a3a5a), letterSpacing: 0.8)),
-            const SizedBox(height: 4),
-            Text(value, style: const TextStyle(fontSize: 22, color: Color(0xFF7F77DD), fontWeight: FontWeight.w300)),
-          ],
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(fontSize: 9, color: Color(0xFF3a3a5a), letterSpacing: 0.8)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontSize: 22, color: Color(0xFF7F77DD), fontWeight: FontWeight.w300)),
+        ]),
       ),
     );
   }
@@ -370,15 +345,11 @@ class _HomeScreenState extends State<HomeScreen> {
               _iconBtn(size: 52, icon: Icons.chat_bubble_outline_rounded, iconSize: 20,
                   onTap: () => Navigator.pushNamed(context, '/inbox')),
               const SizedBox(width: 20),
-              // Кнопка микрофона — haptic + активация сферы
               GestureDetector(
                 onTap: () => Navigator.pushNamed(context, '/chat'),
                 onLongPressStart: (_) {
-                  // Два лёгких импульса — имитация сердцебиения
                   HapticFeedback.lightImpact();
-                  Future.delayed(const Duration(milliseconds: 120), () {
-                    HapticFeedback.lightImpact();
-                  });
+                  Future.delayed(const Duration(milliseconds: 120), () => HapticFeedback.lightImpact());
                   setState(() => _micActive = true);
                 },
                 onLongPressEnd: (_) {
@@ -393,27 +364,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: const Color(0xFF7F77DD).withValues(alpha: _micActive ? 0.4 : 0.25),
                     border: Border.all(
                       color: const Color(0xFF7F77DD).withValues(alpha: _micActive ? 0.8 : 0.5),
-                      width: _micActive ? 1.5 : 1,
-                    ),
+                      width: _micActive ? 1.5 : 1),
                   ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        width: 90, height: 90,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: const Color(0xFF7F77DD).withValues(alpha: _micActive ? 0.3 : 0.15),
-                            width: 1,
-                          ),
-                        ),
-                      ),
-                      Icon(Icons.mic_rounded,
-                        color: _micActive ? const Color(0xFFe0e0f0) : const Color(0xFFAFA9EC),
-                        size: 26),
-                    ],
-                  ),
+                  child: Stack(alignment: Alignment.center, children: [
+                    Container(width: 90, height: 90,
+                      decoration: BoxDecoration(shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFF7F77DD).withValues(alpha: _micActive ? 0.3 : 0.15), width: 1))),
+                    Icon(Icons.mic_rounded,
+                      color: _micActive ? const Color(0xFFe0e0f0) : const Color(0xFFAFA9EC), size: 26),
+                  ]),
                 ),
               ),
               const SizedBox(width: 20),
@@ -423,7 +382,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 12),
           const Text('удержи для разговора · нажми для текста',
-              style: TextStyle(fontSize: 11, color: Color(0xFF2a2a4a))),
+            style: TextStyle(fontSize: 11, color: Color(0xFF2a2a4a))),
         ],
       ),
     );
